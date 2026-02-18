@@ -1,0 +1,26 @@
+# Airflow Core
+pandas<2.2.0
+kubernetes==30.1.0
+redis==5.2.1
+sqlalchemy<2.0
+# dask
+dask==2026.1.2 
+distributed==2026.1.2
+# Spatial Assets
+beautifulsoup4==4.*
+# dask-geopandas==0.5.0
+# dask-rasterio==0.2.1
+descartes==1.1.0
+geoalchemy2==0.18.0
+geopandas==1.1.1
+matplotlib==3.10.6
+nltk==3.9.1
+openpyxl==3.1.5
+owslib==0.34.1
+pyarrow==19.0.0
+pysal==25.1
+rasterio==1.4.3
+scikit-image==0.25.2
+scikit-learn==1.7.2
+statsmodels==0.14.5
+xarray==2025.6.1
