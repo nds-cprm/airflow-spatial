@@ -1,0 +1,3 @@
+[submodule "dags/teste"]
+	path = dags/teste
+	url = https://github.com/nds-cprm/airflow-dags-teste.git
