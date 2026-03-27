@@ -1,7 +1,7 @@
 ARG PYTHON_VERSION=3.12
 ARG DEBIAN_VERSION=trixie
 
-ARG AIRFLOW_VERSION=2.10.5
+ARG AIRFLOW_VERSION=2.11.2
 ARG AIRFLOW_INSTALL_DIR=/var/lib/airflow
 
 ARG ORACLE_INSTANTCLIENT_DIR=/opt/oracle
@@ -117,6 +117,7 @@ ARG AIRFLOW_ENV_CONSTRAINT_FILE="https://raw.githubusercontent.com/apache/airflo
 
 COPY requirements.txt .
 
+# TODO - Bring this to single sh
 RUN python -m venv --system-site-packages --prompt airflow venv && \
     . venv/bin/activate && \
     python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
