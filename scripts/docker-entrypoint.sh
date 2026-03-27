@@ -81,6 +81,7 @@ case "$1" in
         waitfordb
         airflow db check-migrations
         # FIXME: Flower não sai do estado starting (Não gera PID)
+        # TODO: https://airflow.apache.org/docs/apache-airflow/2.10.5/howto/run-behind-proxy.html
         exec airflow celery "$@" --url-prefix flower --port 5555 --pid $PID
         ;;
 
