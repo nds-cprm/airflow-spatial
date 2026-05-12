@@ -1,6 +1,6 @@
-[submodule "dags/sgb"]
-	path = dags/sgb
-	url = https://github.com/nds-cprm/airflow-dags-teste.git
 [submodule "dags/isagro"]
 	path = dags/isagro
 	url = https://github.com/nds-cprm/airflow-dags-isagro-dev.git
+[submodule "dags/sgb"]
+	path = dags/sgb
+	url = https://github.com/nds-cprm/airflow-dags-teste.git
