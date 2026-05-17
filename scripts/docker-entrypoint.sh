@@ -45,12 +45,12 @@ install_modules() {
     fi
 }
 
-echo "Executing: $1"
 PID="${AIRFLOW_RUN_DIR}/airflow-$1-$(hostname).pid"
   
 case "$1" in
     dev|standalone)
         install_modules
+        echo "Executing: airflow standalone"
         exec airflow standalone
         ;;
 
@@ -59,12 +59,14 @@ case "$1" in
         waitfordb
         # TODO: Criar rotina para criação de primeiro superuser
         # FIXME: Container não entra em estado complete no swarm
+        echo "Executing: airflow db migrate"
         exec airflow db migrate
         ;;
 
     webserver|scheduler|triggerer)
         install_modules
         waitfordb
+        echo "Executing: airflow $1"
         airflow db check-migrations
         exec airflow "$@" --pid $PID
         ;;
@@ -72,6 +74,7 @@ case "$1" in
     worker)
         install_modules
         waitfordb
+        echo "Executing: airflow worker"
         airflow db check-migrations
         exec airflow celery "$@" --pid $PID
         ;;
@@ -80,20 +83,25 @@ case "$1" in
         install_modules
         waitfordb
         airflow db check-migrations
+        echo "Executing: celery flower"
         # FIXME: Flower não sai do estado starting (Não gera PID)
         # TODO: https://airflow.apache.org/docs/apache-airflow/2.10.5/howto/run-behind-proxy.html
         exec airflow celery "$@" --url-prefix flower --port 5555 --pid $PID
         ;;
 
     version)
+        echo "Executing: airflow $1"
         exec airflow version
         ;;
 
     info)
+        echo "Executing: airflow $1"
         exec airflow info
         ;;
 
     *)
-        exec "$@"
+        CMD="$@"
+        echo "Executing: $CMD"
+        exec $CMD
         ;;
 esac
