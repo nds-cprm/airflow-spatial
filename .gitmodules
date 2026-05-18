@@ -4,3 +4,6 @@
 [submodule "dags/sgb"]
 	path = dags/sgb
 	url = https://github.com/nds-cprm/airflow-dags-teste.git
+[submodule "dags/p3m"]
+	path = dags/p3m
+	url = https://github.com/nds-cprm/airflow-dags-p3m.git
