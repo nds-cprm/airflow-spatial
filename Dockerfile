@@ -165,7 +165,7 @@ RUN apt-get -y update && \
 RUN dpkg -i /tmp/apache-arrow.deb && \
     apt-get -y update && \
     apt-get install -y --no-install-recommends --no-install-suggests \
-        libarrow-compute2300 libarrow-dataset2300 libparquet2300 && \
+        libarrow-compute2400 libarrow-dataset2400 libparquet2400 && \
     apt-get -y autoremove && \
     rm -rf /var/lib/apt/lists/*    
 
