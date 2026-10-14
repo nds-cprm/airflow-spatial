@@ -171,10 +171,7 @@ RUN dpkg -i /tmp/apache-arrow.deb && \
 ENV AIRFLOW_INSTALL_DIR=${AIRFLOW_INSTALL_DIR} \
     AIRFLOW_HOME=${AIRFLOW_INSTALL_DIR}/home \
     AIRFLOW_RUN_DIR=${AIRFLOW_RUN_DIR} \
-    PATH=/usr/gdal/bin:$PATH \
-    NSS_WRAPPER_PASSWD=/tmp/passwd.nss \
-    NSS_WRAPPER_GROUP=/etc/group \
-    LD_PRELOAD=libnss_wrapper.so
+    PATH=/usr/gdal/bin:$PATH 
 
 # GDAL
 COPY --from=build /usr/gdal /usr/gdal

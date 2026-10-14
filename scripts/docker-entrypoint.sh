@@ -49,21 +49,20 @@ install_modules() {
 
 # NSS Wrapper
 # Se o UID atual não puder ser resolvido para um nome (caso típico do OpenShift)
-if ! cut -d: -f1 /etc/passwd | grep -q -x "$(whoami)"; then
-    # Define caminhos em uma pasta onde o OpenShift permite escrita (/tmp ou /opt/airflow)
-    export NSS_WRAPPER_PASSWD=/tmp/passwd.nss
-    export NSS_WRAPPER_GROUP=/etc/group
+USER_EXISTS=$(cut -d: -f3 /etc/passwd | grep -x "$(id -u)" | wc -l)
+echo "User exists? $USER_EXISTS"
+
+if [ $USER_EXISTS -eq 0 ]; then
+    # Injeta dinamicamente o UID aleatório atual associado ao nome "airflow"
+    # O GID sempre será 0 no OpenShift Restricted SCC
+    export NSS_WRAPPER_PASSWD=/tmp/passwd.nss 
+    export NSS_WRAPPER_GROUP=/etc/group 
+    export LD_PRELOAD=libnss_wrapper.so
 
     # Clona o passwd original do sistema para o nosso arquivo temporário
     cat /etc/passwd > "$NSS_WRAPPER_PASSWD"
-    
-    # Injeta dinamicamente o UID aleatório atual associado ao nome "airflow"
-    # O GID sempre será 0 no OpenShift Restricted SCC
-    echo "airflow:x:$(id -u):0:Airflow OpenShift User:${AIRFLOW_HOME}:/bin/bash" >> "$NSS_WRAPPER_PASSWD"
 
-    # Carrega a biblioteca do nss_wrapper para interceptar as chamadas de sistema
-    export LD_PRELOAD=libnss_wrapper.so
-    
+    echo "airflow:x:$(id -u):0:Airflow OpenShift User:${AIRFLOW_HOME}:/bin/bash" >> "$NSS_WRAPPER_PASSWD"
     echo "nss_wrapper ativado: Usuário virtual 'airflow' criado para o UID $(id -u)"
 fi
 
