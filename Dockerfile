@@ -30,8 +30,6 @@ RUN apt-get -y update && \
 
 # Oracle
 ARG ORACLE_INSTANTCLIENT_DIR
-ARG ORACLE_INSTANTCLIENT_URL="https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-basiclite-linux.x64-19.28.0.0.0dbru.zip"
-ARG ORACLE_INSTANTCLIENT_SDK_URL="https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-sdk-linux.x64-19.28.0.0.0dbru.zip"
 
 WORKDIR /tmp
 
@@ -41,21 +39,22 @@ RUN apt-get -y update && \
     apt-get -y autoremove && \
     rm -rf /var/lib/apt/lists/* && \
     # install oracle client
-    wget -qO oracle.zip ${ORACLE_INSTANTCLIENT_URL} && \
-    wget -qO oracle-sdk.zip ${ORACLE_INSTANTCLIENT_SDK_URL} && \
+    ARCH=$(dpkg --print-architecture) && \
+    wget -qO oracle.zip "https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-basiclite-linux.$ARCH-19.28.0.0.0dbru.zip" && \
+    wget -qO oracle-sdk.zip "https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-sdk-linux.$ARCH-19.28.0.0.0dbru.zip" && \
     mkdir -p ${ORACLE_INSTANTCLIENT_DIR} && \
     unzip -d ${ORACLE_INSTANTCLIENT_DIR} oracle.zip && \
     unzip -od ${ORACLE_INSTANTCLIENT_DIR} oracle-sdk.zip && \
-    _CLIENT_DIR=$(find /opt/oracle/ -name instantclient* -type d -print -quit) && \
-    # create symlink to normalize name
-    ln -s $_CLIENT_DIR ${ORACLE_INSTANTCLIENT_DIR}/instantclient && \
     # Fix error on find libaio1 on oracle
-    ln -s $(find /usr/lib/x86_64-linux-gnu -name libaio.so.1* -type f -print -quit) libaio.so.1 && \
-    echo $_CLIENT_DIR > /etc/ld.so.conf.d/oracle.conf && \
+    ARCH=$(uname -m) && \
+    ln -s $(find /usr/lib/$ARCH-linux-gnu -name libaio.so.1* -type f -print -quit) /usr/lib/$ARCH-linux-gnu/libaio.so.1 && \
+    CLIENT_DIR=$(find /opt/oracle/ -name instantclient* -type d -print -quit) && \
+    echo $CLIENT_DIR > /etc/ld.so.conf.d/oracle.conf && \
     ldconfig
 
 # Install GDAL dependencies, with Oracle and Parquet support
-RUN wget -O apache-arrow.deb https://packages.apache.org/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb && \
+RUN wget -O apache-arrow.deb \
+        https://packages.apache.org/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb && \
     dpkg -i apache-arrow.deb && \
     apt-get -y update && \
     apt-get install -y --no-install-recommends --no-install-suggests \ 
@@ -84,7 +83,7 @@ RUN wget -O apache-arrow.deb https://packages.apache.org/artifactory/arrow/$(lsb
     rm -rf /var/lib/apt/lists/*
 
 # Compile and install GDAL
-ARG OSGEO_GDAL_VERSION=3.12.2
+ARG OSGEO_GDAL_VERSION=3.12.4
 
 RUN set -xe && \
     wget -qO- https://download.osgeo.org/gdal/${OSGEO_GDAL_VERSION}/gdal-${OSGEO_GDAL_VERSION}.tar.gz | tar -zxvf - && \
@@ -92,6 +91,8 @@ RUN set -xe && \
     mkdir -p $GDAL_DIR/build && \
     cd $GDAL_DIR/build && \
     cmake \
+        -DCMAKE_CXX_FLAGS="-Wno-psabi" \
+        -DCMAKE_C_FLAGS="-Wno-psabi" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr/gdal \
         -DGDAL_BUILD_OPTIONAL_DRIVERS=ON \
@@ -113,8 +114,6 @@ ARG AIRFLOW_PLUGINS="celery,elasticsearch,oracle,opensearch,postgres,mongo,mssql
 
 WORKDIR ${AIRFLOW_INSTALL_DIR}
 
-ARG AIRFLOW_ENV_CONSTRAINT_FILE="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
-
 COPY requirements.txt .
 
 # TODO - Bring this to single sh
@@ -122,6 +121,7 @@ RUN python -m venv --system-site-packages --prompt airflow venv && \
     . venv/bin/activate && \
     python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     # Airflow
+    AIRFLOW_ENV_CONSTRAINT_FILE="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-$(python --version 2>&1 | grep -oE '[0-9]+\.[0-9]+').txt" && \
     python -m pip install --no-cache-dir --constraint ${AIRFLOW_ENV_CONSTRAINT_FILE} \
         "apache-airflow[${AIRFLOW_PLUGINS}]==${AIRFLOW_VERSION}" && \
     # Other 
@@ -136,8 +136,6 @@ FROM python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION} AS release
 
 ARG AIRFLOW_INSTALL_DIR
 ARG ORACLE_INSTANTCLIENT_DIR
-ARG AIRFLOW_USER=airflow
-ARG AIRFLOW_UID="50000"
 ARG AIRFLOW_RUN_DIR=/var/run/airflow
 
 # Apache Arrow
@@ -151,8 +149,9 @@ RUN apt-get -y update && \
         git \
         gnupg \
         libaio1t64 \
-        libspatialite8t64 librasterlite2-1 libjson-c5 libxerces-c3.2t64  libopenexr-3-1-30 \
-        libkmlbase1t64 libkmlconvenience1t64 libkmldom1t64 libkmlengine1t64 libsfcgal2 gnupg libmariadb3 libmuparser2v5 \
+        libspatialite8t64 librasterlite2-1 libjson-c5 libxerces-c3.2t64 libopenexr-3-1-30 libkmlbase1t64 \
+        libkmlconvenience1t64 libkmldom1t64 libkmlengine1t64 libsfcgal2 gnupg libmariadb3 libmuparser2v5 \
+        libnss-wrapper \
         openssh-client \
         postgresql-client \
         sqlite3 \
@@ -172,7 +171,10 @@ RUN dpkg -i /tmp/apache-arrow.deb && \
 ENV AIRFLOW_INSTALL_DIR=${AIRFLOW_INSTALL_DIR} \
     AIRFLOW_HOME=${AIRFLOW_INSTALL_DIR}/home \
     AIRFLOW_RUN_DIR=${AIRFLOW_RUN_DIR} \
-    PATH=/usr/gdal/bin:$PATH
+    PATH=/usr/gdal/bin:$PATH \
+    NSS_WRAPPER_PASSWD=/tmp/passwd.nss \
+    NSS_WRAPPER_GROUP=/etc/group \
+    LD_PRELOAD=libnss_wrapper.so
 
 # GDAL
 COPY --from=build /usr/gdal /usr/gdal
@@ -187,14 +189,14 @@ COPY --from=build /etc/ld.so.conf.d/oracle.conf /etc/ld.so.conf.d/oracle.conf
 # Entrypoint
 COPY scripts/docker-entrypoint.sh scripts/docker-healthcheck.sh scripts/airflow-init.sh /
 
-VOLUME ${AIRFLOW_HOME}
+# VOLUME ${AIRFLOW_HOME}
 
 WORKDIR ${AIRFLOW_INSTALL_DIR}
 
 RUN set -o pipefail && \
     echo "/usr/gdal/lib" > /etc/ld.so.conf.d/gdal.conf && \
     # Fix error on find libaio1 on oracle
-    ln -s $(find /usr/lib/x86_64-linux-gnu -name libaio.so.1* -type f -print -quit) /usr/lib/x86_64-linux-gnu/libaio.so.1 && \
+    ln -s $(find /usr/lib/$(uname -m)-linux-gnu -name libaio.so.1* -type f -print -quit) /usr/lib/$(uname -m)-linux-gnu/libaio.so.1 && \
     ldconfig && \
     # Make entrypoint executable
     chmod +x \
@@ -203,14 +205,9 @@ RUN set -o pipefail && \
         /airflow-init.sh && \
     # add init script on root's .bashrc and skel
     printf "\n# Airflow \nsource /airflow-init.sh\n" | tee -a ~/.bashrc >> /etc/skel/.bashrc && \
-    # add user airflow (required)
-    useradd -u ${AIRFLOW_UID} -d ${AIRFLOW_HOME} -m ${AIRFLOW_USER} && \
     # create run dir
     mkdir -p ${AIRFLOW_RUN_DIR} && \
-    chown airflow:root ${AIRFLOW_RUN_DIR} && \
     chmod -R g=u ${AIRFLOW_RUN_DIR}
-
-USER ${AIRFLOW_UID}
 
 WORKDIR ${AIRFLOW_HOME}
 

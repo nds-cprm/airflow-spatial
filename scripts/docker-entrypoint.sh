@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e 
+
 if [[ -z $VIRTUAL_ENV ]]; then
     source ${AIRFLOW_INSTALL_DIR}/venv/bin/activate 
 fi
@@ -44,6 +46,26 @@ install_modules() {
         fi
     fi
 }
+
+# NSS Wrapper
+# Se o UID atual não puder ser resolvido para um nome (caso típico do OpenShift)
+if ! cut -d: -f1 /etc/passwd | grep -q -x "$(whoami)"; then
+    # Define caminhos em uma pasta onde o OpenShift permite escrita (/tmp ou /opt/airflow)
+    export NSS_WRAPPER_PASSWD=/tmp/passwd.nss
+    export NSS_WRAPPER_GROUP=/etc/group
+
+    # Clona o passwd original do sistema para o nosso arquivo temporário
+    cat /etc/passwd > "$NSS_WRAPPER_PASSWD"
+    
+    # Injeta dinamicamente o UID aleatório atual associado ao nome "airflow"
+    # O GID sempre será 0 no OpenShift Restricted SCC
+    echo "airflow:x:$(id -u):0:Airflow OpenShift User:${AIRFLOW_HOME}:/bin/bash" >> "$NSS_WRAPPER_PASSWD"
+
+    # Carrega a biblioteca do nss_wrapper para interceptar as chamadas de sistema
+    export LD_PRELOAD=libnss_wrapper.so
+    
+    echo "nss_wrapper ativado: Usuário virtual 'airflow' criado para o UID $(id -u)"
+fi
 
 PID="${AIRFLOW_RUN_DIR}/airflow-$1-$(hostname).pid"
   
