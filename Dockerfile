@@ -150,6 +150,7 @@ RUN apt-get -y update && \
         libaio1t64 \
         libspatialite8t64 librasterlite2-1 libjson-c5 libxerces-c3.2t64 libopenexr-3-1-30 libkmlbase1t64 \
         libkmlconvenience1t64 libkmldom1t64 libkmlengine1t64 libsfcgal2 gnupg libmariadb3 libmuparser2v5 \
+        opentelemetry-cpp \
         libnss-wrapper \
         openssh-client \
         postgresql-client \
