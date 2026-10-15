@@ -25,3 +25,4 @@ scikit-learn==1.8.0
 statsmodels==0.14.5
 xarray==2025.6.1
 pyhumps==3.8.0
+fastparquet==2026.5.0
