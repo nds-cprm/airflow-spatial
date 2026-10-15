@@ -39,7 +39,7 @@ RUN apt-get -y update && \
     apt-get -y autoremove && \
     rm -rf /var/lib/apt/lists/* && \
     # install oracle client
-    ARCH=$(dpkg --print-architecture) && \
+    ARCH=$(dpkg --print-architecture | sed 's/amd/x/g') && \
     wget -qO oracle.zip "https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-basiclite-linux.$ARCH-19.28.0.0.0dbru.zip" && \
     wget -qO oracle-sdk.zip "https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-sdk-linux.$ARCH-19.28.0.0.0dbru.zip" && \
     mkdir -p ${ORACLE_INSTANTCLIENT_DIR} && \
@@ -85,8 +85,7 @@ RUN wget -O apache-arrow.deb \
 # Compile and install GDAL
 ARG OSGEO_GDAL_VERSION=3.12.4
 
-RUN set -xe && \
-    wget -qO- https://download.osgeo.org/gdal/${OSGEO_GDAL_VERSION}/gdal-${OSGEO_GDAL_VERSION}.tar.gz | tar -zxvf - && \
+RUN wget -qO- https://download.osgeo.org/gdal/${OSGEO_GDAL_VERSION}/gdal-${OSGEO_GDAL_VERSION}.tar.gz | tar -zxvf - && \
     GDAL_DIR=gdal-${OSGEO_GDAL_VERSION} && \
     mkdir -p $GDAL_DIR/build && \
     cd $GDAL_DIR/build && \
@@ -164,7 +163,7 @@ RUN apt-get -y update && \
 RUN dpkg -i /tmp/apache-arrow.deb && \
     apt-get -y update && \
     apt-get install -y --no-install-recommends --no-install-suggests \
-        libarrow-compute2400 libarrow-dataset2400 libparquet2400 && \
+        libarrow-compute2600 libarrow-dataset2600 libparquet2600 && \
     apt-get -y autoremove && \
     rm -rf /var/lib/apt/lists/*    
 
