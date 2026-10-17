@@ -7,7 +7,9 @@ ARG AIRFLOW_INSTALL_DIR=/var/lib/airflow
 ARG ORACLE_INSTANTCLIENT_DIR=/opt/oracle
 
 
-FROM python:${PYTHON_VERSION}-${DEBIAN_VERSION} AS build 
+FROM python:${PYTHON_VERSION}-${DEBIAN_VERSION} AS build
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG PYTHON_VERSION
 
@@ -58,14 +60,14 @@ RUN apt-get -y update && \
     # check integrity
     echo "${BASICLITE_SHA256}  oracle.zip" | sha256sum -c - && \
     echo "${SDK_SHA256}  oracle-sdk.zip" | sha256sum -c - && \
-    mkdir -p ${ORACLE_INSTANTCLIENT_DIR} && \
-    unzip -d ${ORACLE_INSTANTCLIENT_DIR} oracle.zip && \
-    unzip -od ${ORACLE_INSTANTCLIENT_DIR} oracle-sdk.zip && \
+    mkdir -p "${ORACLE_INSTANTCLIENT_DIR}" && \
+    unzip -d "${ORACLE_INSTANTCLIENT_DIR}" oracle.zip && \
+    unzip -od "${ORACLE_INSTANTCLIENT_DIR}" oracle-sdk.zip && \
     # Fix error on find libaio1 on oracle
     ARCH=$(uname -m) && \
-    ln -s $(find /usr/lib/$ARCH-linux-gnu -name libaio.so.1* -type f -print -quit) /usr/lib/$ARCH-linux-gnu/libaio.so.1 && \
-    CLIENT_DIR=$(find ${ORACLE_INSTANTCLIENT_DIR} -name instantclient* -type d -print -quit) && \
-    echo $CLIENT_DIR > /etc/ld.so.conf.d/oracle.conf && \
+    ln -s "$(find "/usr/lib/$ARCH-linux-gnu" -name 'libaio.so.1*' -type f -print -quit)" "/usr/lib/$ARCH-linux-gnu/libaio.so.1" && \
+    CLIENT_DIR=$(find "${ORACLE_INSTANTCLIENT_DIR}" -name 'instantclient*' -type d -print -quit) && \
+    echo "$CLIENT_DIR" > /etc/ld.so.conf.d/oracle.conf && \
     ldconfig
 
 # Install GDAL dependencies, with Oracle and Parquet support
@@ -76,14 +78,15 @@ ARG APACHE_ARROW_SIGNER_FINGERPRINTS=7BD1A9A50E4F701BCBFD90EF9E922B2D60E9FD1C
 RUN test -n "${APACHE_ARROW_SIGNER_FINGERPRINTS}" && \
     # keyring with only the pinned keys
     wget -qO arrow-KEYS https://downloads.apache.org/arrow/KEYS && \
-    export GNUPGHOME=$(mktemp -d) && \
+    GNUPGHOME=$(mktemp -d) && \
+    export GNUPGHOME && \
     gpg --batch --quiet --import arrow-KEYS && \
     for FPR in ${APACHE_ARROW_SIGNER_FINGERPRINTS}; do gpg --batch --list-keys "$FPR" > /dev/null || exit 1; done && \
     gpg --batch --export ${APACHE_ARROW_SIGNER_FINGERPRINTS} > /usr/share/keyrings/apache-arrow.gpg && \
     rm -rf "$GNUPGHOME" arrow-KEYS && \
     # repository
     printf "Types: deb\nURIs: https://packages.apache.org/artifactory/arrow/%s/\nSuites: %s\nComponents: main\nSigned-By: /usr/share/keyrings/apache-arrow.gpg\n" \
-        "$(lsb_release --id --short | tr 'A-Z' 'a-z')" "$(lsb_release --codename --short)" \
+        "$(lsb_release --id --short | tr '[:upper:]' '[:lower:]')" "$(lsb_release --codename --short)" \
         > /etc/apt/sources.list.d/apache-arrow.sources && \
     apt-get -y update && \
     apt-get install -y --no-install-recommends --no-install-suggests \ 
@@ -116,13 +119,13 @@ RUN test -n "${APACHE_ARROW_SIGNER_FINGERPRINTS}" && \
 ARG OSGEO_GDAL_VERSION=3.12.4
 
 RUN GDAL_URL=https://download.osgeo.org/gdal/${OSGEO_GDAL_VERSION}/gdal-${OSGEO_GDAL_VERSION}.tar.gz && \
-    wget -q ${GDAL_URL} ${GDAL_URL}.md5 && \
-    md5sum -c gdal-${OSGEO_GDAL_VERSION}.tar.gz.md5 && \
-    tar -zxf gdal-${OSGEO_GDAL_VERSION}.tar.gz && \
-    rm gdal-${OSGEO_GDAL_VERSION}.tar.gz gdal-${OSGEO_GDAL_VERSION}.tar.gz.md5 && \
+    wget -q "${GDAL_URL}" "${GDAL_URL}.md5" && \
+    md5sum -c "gdal-${OSGEO_GDAL_VERSION}.tar.gz.md5" && \
+    tar -zxf "gdal-${OSGEO_GDAL_VERSION}.tar.gz" && \
+    rm "gdal-${OSGEO_GDAL_VERSION}.tar.gz" "gdal-${OSGEO_GDAL_VERSION}.tar.gz.md5" && \
     GDAL_DIR=gdal-${OSGEO_GDAL_VERSION} && \
-    mkdir -p $GDAL_DIR/build && \
-    cd $GDAL_DIR/build && \
+    mkdir -p "$GDAL_DIR/build" && \
+    cd "$GDAL_DIR/build" && \
     cmake \
         -DCMAKE_CXX_FLAGS="-Wno-psabi" \
         -DCMAKE_C_FLAGS="-Wno-psabi" \
@@ -130,7 +133,7 @@ RUN GDAL_URL=https://download.osgeo.org/gdal/${OSGEO_GDAL_VERSION}/gdal-${OSGEO_
         -DCMAKE_INSTALL_PREFIX=/usr/gdal \
         -DGDAL_BUILD_OPTIONAL_DRIVERS=ON \
         -DOGR_BUILD_OPTIONAL_DRIVERS=ON \
-        -DOracle_ROOT=$(find ${ORACLE_INSTANTCLIENT_DIR} -name instantclient* -type d -print -quit) \
+        -DOracle_ROOT="$(find "${ORACLE_INSTANTCLIENT_DIR}" -name 'instantclient*' -type d -print -quit)" \
         -DBUILD_PYTHON_BINDINGS=OFF \
     .. && \
     cmake --build . --target install && \
@@ -154,17 +157,19 @@ RUN python -m venv --system-site-packages --prompt airflow venv && \
     python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     # Airflow
     AIRFLOW_ENV_CONSTRAINT_FILE="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-$(python --version 2>&1 | grep -oE '[0-9]+\.[0-9]+').txt" && \
-    python -m pip install --no-cache-dir --constraint ${AIRFLOW_ENV_CONSTRAINT_FILE} \
+    python -m pip install --no-cache-dir --constraint "${AIRFLOW_ENV_CONSTRAINT_FILE}" \
         "apache-airflow[${AIRFLOW_PLUGINS}]==${AIRFLOW_VERSION}" && \
-    # Other 
-    python -m pip install --no-cache-dir -r requirements.txt --constraint ${AIRFLOW_ENV_CONSTRAINT_FILE} && \
+    # Other
+    python -m pip install --no-cache-dir -r requirements.txt --constraint "${AIRFLOW_ENV_CONSTRAINT_FILE}" && \
     # PyGDAL, based on distribution
-    python -m pip install --no-cache-dir --constraint ${AIRFLOW_ENV_CONSTRAINT_FILE} \
+    python -m pip install --no-cache-dir --constraint "${AIRFLOW_ENV_CONSTRAINT_FILE}" \
         "gdal[numpy]==$(gdal-config --version).*" && \
     deactivate
 
 
 FROM python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION} AS release
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG AIRFLOW_USER=50000
 ARG AIRFLOW_INSTALL_DIR
@@ -218,6 +223,7 @@ COPY scripts/docker-entrypoint.sh scripts/docker-healthcheck.sh scripts/airflow-
 # HOME: a UID without passwd entry gets HOME=/ by default
 ENV HOME=${AIRFLOW_INSTALL_DIR}/home \
     PATH=/usr/gdal/bin:$PATH \
+    GDAL_DATA=/usr/gdal/share/gdal \
     AIRFLOW_INSTALL_DIR=${AIRFLOW_INSTALL_DIR} \
     AIRFLOW_HOME=${AIRFLOW_INSTALL_DIR}/home \
     AIRFLOW_RUN_DIR=${AIRFLOW_RUN_DIR}
@@ -225,10 +231,9 @@ ENV HOME=${AIRFLOW_INSTALL_DIR}/home \
 # Last Configs
 WORKDIR ${AIRFLOW_INSTALL_DIR}
 
-RUN set -o pipefail && \
-    echo "/usr/gdal/lib" > /etc/ld.so.conf.d/gdal.conf && \
+RUN echo "/usr/gdal/lib" > /etc/ld.so.conf.d/gdal.conf && \
     # Fix error on find libaio1 on oracle
-    ln -s $(find /usr/lib/$(uname -m)-linux-gnu -name libaio.so.1* -type f -print -quit) /usr/lib/$(uname -m)-linux-gnu/libaio.so.1 && \
+    ln -s "$(find "/usr/lib/$(uname -m)-linux-gnu" -name 'libaio.so.1*' -type f -print -quit)" "/usr/lib/$(uname -m)-linux-gnu/libaio.so.1" && \
     ldconfig && \
     # Make entrypoint executable
     chmod +x \
@@ -243,6 +248,15 @@ RUN set -o pipefail && \
     chmod -R g=u ${AIRFLOW_HOME} ${AIRFLOW_RUN_DIR}
 
 WORKDIR ${AIRFLOW_HOME}
+
+# Restore the default shell, so images built FROM this one don't inherit bash + pipefail
+SHELL ["/bin/sh", "-c"]
+
+# nss_wrapper: resolves the arbitrary UID (OpenShift) for every process, including docker exec.
+# /tmp/passwd.nss is generated by the entrypoint
+ENV NSS_WRAPPER_PASSWD=/tmp/passwd.nss \
+    NSS_WRAPPER_GROUP=/etc/group \
+    LD_PRELOAD=libnss_wrapper.so
 
 USER ${AIRFLOW_USER}
 

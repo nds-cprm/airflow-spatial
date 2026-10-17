@@ -43,20 +43,15 @@ install_modules() {
 }
 
 # NSS Wrapper
-# Se o UID atual não puder ser resolvido para um nome (caso típico do OpenShift)
-USER_EXISTS=$(cut -d: -f3 /etc/passwd | grep -x "$(id -u)" | wc -l)
+# NSS_WRAPPER_PASSWD, NSS_WRAPPER_GROUP e LD_PRELOAD vêm do ENV da imagem, assim o docker exec também os recebe.
+# O arquivo é sempre gerado: com o LD_PRELOAD global, todo usuário (inclusive root) é resolvido por ele
+cat /etc/passwd > "$NSS_WRAPPER_PASSWD"
 
-if [ $USER_EXISTS -eq 0 ]; then
+# Se o UID atual não puder ser resolvido para um nome (caso típico do OpenShift)
+if ! cut -d: -f3 /etc/passwd | grep -qx "$(id -u)"; then
     # Injeta dinamicamente o UID aleatório atual associado ao nome "airflow"
     # O GID sempre será 0 no OpenShift Restricted SCC
-    export NSS_WRAPPER_PASSWD=/tmp/passwd.nss 
-    export NSS_WRAPPER_GROUP=/etc/group 
-    export LD_PRELOAD=libnss_wrapper.so
-
-    # Clona o passwd original do sistema para o nosso arquivo temporário
-    cat /etc/passwd > "$NSS_WRAPPER_PASSWD"
-
-    echo "airflow:x:$(id -u):0:Airflow OpenShift User:${AIRFLOW_HOME}:/bin/bash" >> "$NSS_WRAPPER_PASSWD"
+    echo "airflow:x:$(id -u):$(id -g):Airflow OpenShift User:${AIRFLOW_HOME}:/bin/bash" >> "$NSS_WRAPPER_PASSWD"
     echo "nss_wrapper ativado: Usuário virtual 'airflow' criado para o UID $(id -u)"
 fi
 
