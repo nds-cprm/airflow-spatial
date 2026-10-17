@@ -169,10 +169,12 @@ RUN dpkg -i /tmp/apache-arrow.deb && \
     apt-get -y autoremove && \
     rm -rf /var/lib/apt/lists/*    
 
+# HOME: a UID without passwd entry gets HOME=/ by default
 ENV AIRFLOW_INSTALL_DIR=${AIRFLOW_INSTALL_DIR} \
     AIRFLOW_HOME=${AIRFLOW_INSTALL_DIR}/home \
     AIRFLOW_RUN_DIR=${AIRFLOW_RUN_DIR} \
-    PATH=/usr/gdal/bin:$PATH 
+    HOME=${AIRFLOW_INSTALL_DIR}/home \
+    PATH=/usr/gdal/bin:$PATH
 
 # GDAL
 COPY --from=build /usr/gdal /usr/gdal
@@ -187,8 +189,6 @@ COPY --from=build /etc/ld.so.conf.d/oracle.conf /etc/ld.so.conf.d/oracle.conf
 # Entrypoint
 COPY scripts/docker-entrypoint.sh scripts/docker-healthcheck.sh scripts/airflow-init.sh /
 
-# VOLUME ${AIRFLOW_HOME}
-
 WORKDIR ${AIRFLOW_INSTALL_DIR}
 
 RUN set -o pipefail && \
@@ -201,13 +201,16 @@ RUN set -o pipefail && \
         /docker-entrypoint.sh \
         /docker-healthcheck.sh \
         /airflow-init.sh && \
-    # add init script on root's .bashrc and skel
-    printf "\n# Airflow \nsource /airflow-init.sh\n" | tee -a ~/.bashrc >> /etc/skel/.bashrc && \
-    # create run dir
-    mkdir -p ${AIRFLOW_RUN_DIR} && \
-    chmod -R g=u ${AIRFLOW_RUN_DIR}
+    # add init script for all users' interactive shells
+    printf "\n# Airflow \nsource /airflow-init.sh\n" >> /etc/bash.bashrc && \
+    # create writable dirs for any UID with GID 0 (OpenShift)
+    mkdir -p ${AIRFLOW_HOME} ${AIRFLOW_RUN_DIR} && \
+    chgrp -R 0 ${AIRFLOW_HOME} ${AIRFLOW_RUN_DIR} && \
+    chmod -R g=u ${AIRFLOW_HOME} ${AIRFLOW_RUN_DIR}
 
 WORKDIR ${AIRFLOW_HOME}
+
+USER 50000:0
 
 ENTRYPOINT [ "tini", "--", "/docker-entrypoint.sh" ]
 
