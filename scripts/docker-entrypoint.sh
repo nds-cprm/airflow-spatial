@@ -13,15 +13,10 @@ function ctrl_c() {
 
 waitfordb() {
     # TODO: Este trecho não funciona com banco SQLite. Comparar com bancos remotos
-    local CONNECTION=$(airflow config get-value database sql_alchemy_conn)
-    local DATABASE_READY=1
-
-    # Check if db is available
-    while [ $DATABASE_READY -ne 0 ]; do
-        echo "Waiting for database..." 
+    # Check if db is available (connection read by Airflow, never exposed on the command line)
+    until python -c 'from sqlalchemy import text; from airflow import settings; settings.engine.connect().execute(text("SELECT 1"))'; do
+        echo "Waiting for database..."
         sleep 2
-        python -c "from sqlalchemy import create_engine as ce; ce('${CONNECTION}').connect().execute('SELECT 1')"
-        DATABASE_READY=$?
     done
 
     # check if Airflow schema is ready
@@ -50,7 +45,6 @@ install_modules() {
 # NSS Wrapper
 # Se o UID atual não puder ser resolvido para um nome (caso típico do OpenShift)
 USER_EXISTS=$(cut -d: -f3 /etc/passwd | grep -x "$(id -u)" | wc -l)
-echo "User exists? $USER_EXISTS"
 
 if [ $USER_EXISTS -eq 0 ]; then
     # Injeta dinamicamente o UID aleatório atual associado ao nome "airflow"
@@ -123,6 +117,6 @@ case "$1" in
     *)
         CMD="$@"
         echo "Executing: $CMD"
-        exec $CMD
+        exec "$CMD"
         ;;
 esac
