@@ -6,6 +6,9 @@ ARG AIRFLOW_INSTALL_DIR=/var/lib/airflow
 
 ARG ORACLE_INSTANTCLIENT_DIR=/opt/oracle
 
+# Apache Arrow <major>.<minor>: build installs the latest <major>.<minor>.* and release the matching runtime libs
+ARG APACHE_ARROW_VERSION=26.0
+
 
 FROM python:${PYTHON_VERSION}-${DEBIAN_VERSION} AS build
 
@@ -74,6 +77,7 @@ RUN apt-get -y update && \
 # Fingerprints (space separated) of the keys allowed to sign the Arrow apt repository,
 # taken from https://downloads.apache.org/arrow/KEYS
 ARG APACHE_ARROW_SIGNER_FINGERPRINTS=7BD1A9A50E4F701BCBFD90EF9E922B2D60E9FD1C
+ARG APACHE_ARROW_VERSION
 
 RUN test -n "${APACHE_ARROW_SIGNER_FINGERPRINTS}" && \
     # keyring with only the pinned keys
@@ -88,11 +92,15 @@ RUN test -n "${APACHE_ARROW_SIGNER_FINGERPRINTS}" && \
     printf "Types: deb\nURIs: https://packages.apache.org/artifactory/arrow/%s/\nSuites: %s\nComponents: main\nSigned-By: /usr/share/keyrings/apache-arrow.gpg\n" \
         "$(lsb_release --id --short | tr '[:upper:]' '[:lower:]')" "$(lsb_release --codename --short)" \
         > /etc/apt/sources.list.d/apache-arrow.sources && \
+    # pin every Arrow/Parquet package (including indirect deps like libarrow-acero-dev) to <major>.<minor>.*
+    [[ "${APACHE_ARROW_VERSION}" =~ ^[0-9]+\.[0-9]+$ ]] && \
+    printf "Package: libarrow* libparquet*\nPin: version %s.*\nPin-Priority: 1001\n" "${APACHE_ARROW_VERSION}" \
+        > /etc/apt/preferences.d/apache-arrow && \
     apt-get -y update && \
     apt-get install -y --no-install-recommends --no-install-suggests \ 
         swig \
         libarrow-dev \
-        libarrow-compute-dev \       
+        libarrow-compute-dev \
         libarrow-dataset-dev \
         libexpat1-dev \
         libsfcgal-dev \
@@ -102,7 +110,7 @@ RUN test -n "${APACHE_ARROW_SIGNER_FINGERPRINTS}" && \
         libkml-dev \
         libmariadb-dev \
         libmuparser-dev \
-        libparquet-dev \ 
+        libparquet-dev \
         libproj-dev \
         libprotobuf-dev \
         librasterlite2-dev \
@@ -200,10 +208,16 @@ RUN apt-get -y update && \
 # Apache Arrow
 COPY --from=build /usr/share/keyrings/apache-arrow.gpg /usr/share/keyrings/apache-arrow.gpg
 COPY --from=build /etc/apt/sources.list.d/apache-arrow.sources /etc/apt/sources.list.d/apache-arrow.sources
+COPY --from=build /etc/apt/preferences.d/apache-arrow /etc/apt/preferences.d/apache-arrow
 
-RUN apt-get -y update && \
+ARG APACHE_ARROW_VERSION
+
+# runtime package names carry the SO version: <major>.<minor> -> <major * 100 + minor> (e.g. 26.0 -> 2600)
+RUN [[ "${APACHE_ARROW_VERSION}" =~ ^[0-9]+\.[0-9]+$ ]] && \
+    ARROW_SO=$(( ${APACHE_ARROW_VERSION%.*} * 100 + ${APACHE_ARROW_VERSION#*.} )) && \
+    apt-get -y update && \
     apt-get install -y --no-install-recommends --no-install-suggests \
-        libarrow-compute2600 libarrow-dataset2600 libparquet2600 && \
+        "libarrow-compute${ARROW_SO}" "libarrow-dataset${ARROW_SO}" "libparquet${ARROW_SO}" && \
     apt-get -y autoremove && \
     rm -rf /var/lib/apt/lists/*    
 
