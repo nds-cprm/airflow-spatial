@@ -31,6 +31,14 @@ RUN apt-get -y update && \
 # Oracle
 ARG ORACLE_INSTANTCLIENT_DIR
 
+# SHA256 from Oracle download pages (linux-x86-64 / linux-arm-aarch64)
+# v19.32.0.0.0
+ARG ORACLE_BASICLITE_SHA256_X64=16947fc0fa55b861903aad6f9d2ddee7b4fedaf789a175ee36b46b82ec64fcbd
+ARG ORACLE_SDK_SHA256_X64=1698b3be6dde8b7e90501a62122cb9c160c712eb709deb7129d915a504b76158
+
+ARG ORACLE_BASICLITE_SHA256_ARM64=2c7c657b1e77b95a969e70f9af816b5e88f40047249c820936aa87a126d8e4f4
+ARG ORACLE_SDK_SHA256_ARM64=be3b37817943102cb051fad80f5dc821821cf1616ffd0983c2ded81621c760d3
+
 WORKDIR /tmp
 
 RUN apt-get -y update && \
@@ -40,22 +48,43 @@ RUN apt-get -y update && \
     rm -rf /var/lib/apt/lists/* && \
     # install oracle client
     ARCH=$(dpkg --print-architecture | sed 's/amd/x/g') && \
-    wget -qO oracle.zip "https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-basiclite-linux.$ARCH-19.28.0.0.0dbru.zip" && \
-    wget -qO oracle-sdk.zip "https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-sdk-linux.$ARCH-19.28.0.0.0dbru.zip" && \
+    case "$ARCH" in \
+        x64) BASICLITE_SHA256=${ORACLE_BASICLITE_SHA256_X64}; SDK_SHA256=${ORACLE_SDK_SHA256_X64} ;; \
+        arm64) BASICLITE_SHA256=${ORACLE_BASICLITE_SHA256_ARM64}; SDK_SHA256=${ORACLE_SDK_SHA256_ARM64} ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac && \
+    wget -qO oracle.zip "https://download.oracle.com/otn_software/linux/instantclient/1932000/instantclient-basiclite-linux.$ARCH-19.32.0.0.0dbru.zip" && \
+    wget -qO oracle-sdk.zip "https://download.oracle.com/otn_software/linux/instantclient/1932000/instantclient-sdk-linux.$ARCH-19.32.0.0.0dbru.zip" && \
+    # check integrity
+    echo "${BASICLITE_SHA256}  oracle.zip" | sha256sum -c - && \
+    echo "${SDK_SHA256}  oracle-sdk.zip" | sha256sum -c - && \
     mkdir -p ${ORACLE_INSTANTCLIENT_DIR} && \
     unzip -d ${ORACLE_INSTANTCLIENT_DIR} oracle.zip && \
     unzip -od ${ORACLE_INSTANTCLIENT_DIR} oracle-sdk.zip && \
     # Fix error on find libaio1 on oracle
     ARCH=$(uname -m) && \
     ln -s $(find /usr/lib/$ARCH-linux-gnu -name libaio.so.1* -type f -print -quit) /usr/lib/$ARCH-linux-gnu/libaio.so.1 && \
-    CLIENT_DIR=$(find /opt/oracle/ -name instantclient* -type d -print -quit) && \
+    CLIENT_DIR=$(find ${ORACLE_INSTANTCLIENT_DIR} -name instantclient* -type d -print -quit) && \
     echo $CLIENT_DIR > /etc/ld.so.conf.d/oracle.conf && \
     ldconfig
 
 # Install GDAL dependencies, with Oracle and Parquet support
-RUN wget -O apache-arrow.deb \
-        https://packages.apache.org/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb && \
-    dpkg -i apache-arrow.deb && \
+# Fingerprints (space separated) of the keys allowed to sign the Arrow apt repository,
+# taken from https://downloads.apache.org/arrow/KEYS
+ARG APACHE_ARROW_SIGNER_FINGERPRINTS=7BD1A9A50E4F701BCBFD90EF9E922B2D60E9FD1C
+
+RUN test -n "${APACHE_ARROW_SIGNER_FINGERPRINTS}" && \
+    # keyring with only the pinned keys
+    wget -qO arrow-KEYS https://downloads.apache.org/arrow/KEYS && \
+    export GNUPGHOME=$(mktemp -d) && \
+    gpg --batch --quiet --import arrow-KEYS && \
+    for FPR in ${APACHE_ARROW_SIGNER_FINGERPRINTS}; do gpg --batch --list-keys "$FPR" > /dev/null || exit 1; done && \
+    gpg --batch --export ${APACHE_ARROW_SIGNER_FINGERPRINTS} > /usr/share/keyrings/apache-arrow.gpg && \
+    rm -rf "$GNUPGHOME" arrow-KEYS && \
+    # repository
+    printf "Types: deb\nURIs: https://packages.apache.org/artifactory/arrow/%s/\nSuites: %s\nComponents: main\nSigned-By: /usr/share/keyrings/apache-arrow.gpg\n" \
+        "$(lsb_release --id --short | tr 'A-Z' 'a-z')" "$(lsb_release --codename --short)" \
+        > /etc/apt/sources.list.d/apache-arrow.sources && \
     apt-get -y update && \
     apt-get install -y --no-install-recommends --no-install-suggests \ 
         swig \
@@ -86,7 +115,11 @@ RUN wget -O apache-arrow.deb \
 # Compile and install GDAL
 ARG OSGEO_GDAL_VERSION=3.12.4
 
-RUN wget -qO- https://download.osgeo.org/gdal/${OSGEO_GDAL_VERSION}/gdal-${OSGEO_GDAL_VERSION}.tar.gz | tar -zxvf - && \
+RUN GDAL_URL=https://download.osgeo.org/gdal/${OSGEO_GDAL_VERSION}/gdal-${OSGEO_GDAL_VERSION}.tar.gz && \
+    wget -q ${GDAL_URL} ${GDAL_URL}.md5 && \
+    md5sum -c gdal-${OSGEO_GDAL_VERSION}.tar.gz.md5 && \
+    tar -zxf gdal-${OSGEO_GDAL_VERSION}.tar.gz && \
+    rm gdal-${OSGEO_GDAL_VERSION}.tar.gz gdal-${OSGEO_GDAL_VERSION}.tar.gz.md5 && \
     GDAL_DIR=gdal-${OSGEO_GDAL_VERSION} && \
     mkdir -p $GDAL_DIR/build && \
     cd $GDAL_DIR/build && \
@@ -97,7 +130,7 @@ RUN wget -qO- https://download.osgeo.org/gdal/${OSGEO_GDAL_VERSION}/gdal-${OSGEO
         -DCMAKE_INSTALL_PREFIX=/usr/gdal \
         -DGDAL_BUILD_OPTIONAL_DRIVERS=ON \
         -DOGR_BUILD_OPTIONAL_DRIVERS=ON \
-        -DOracle_ROOT=/opt/oracle/instantclient \
+        -DOracle_ROOT=$(find ${ORACLE_INSTANTCLIENT_DIR} -name instantclient* -type d -print -quit) \
         -DBUILD_PYTHON_BINDINGS=OFF \
     .. && \
     cmake --build . --target install && \
@@ -105,9 +138,8 @@ RUN wget -qO- https://download.osgeo.org/gdal/${OSGEO_GDAL_VERSION}/gdal-${OSGEO
     rm -rf build/ && \
     ldconfig
 
-ENV GDAL_DATA=/usr/local/share/gdal \
+ENV GDAL_DATA=/usr/gdal/share/gdal \
     PATH=/usr/gdal/bin:$PATH
-    
 
 # Install airflow
 ARG AIRFLOW_PLUGINS="celery,elasticsearch,oracle,opensearch,postgres,mongo,mssql,mariadb,samba,ssh,crypto"
@@ -134,12 +166,10 @@ RUN python -m venv --system-site-packages --prompt airflow venv && \
 
 FROM python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION} AS release
 
+ARG AIRFLOW_USER=50000
 ARG AIRFLOW_INSTALL_DIR
 ARG ORACLE_INSTANTCLIENT_DIR
 ARG AIRFLOW_RUN_DIR=/var/run/airflow
-
-# Apache Arrow
-COPY --from=build /tmp/apache-arrow.deb /tmp/apache-arrow.deb
 
 RUN apt-get -y update && \
     apt-get install -y --no-install-recommends --no-install-suggests \
@@ -150,7 +180,7 @@ RUN apt-get -y update && \
         gnupg \
         libaio1t64 \
         libspatialite8t64 librasterlite2-1 libjson-c5 libxerces-c3.2t64 libopenexr-3-1-30 libkmlbase1t64 \
-        libkmlconvenience1t64 libkmldom1t64 libkmlengine1t64 libsfcgal2 gnupg libmariadb3 libmuparser2v5 \
+        libkmlconvenience1t64 libkmldom1t64 libkmlengine1t64 libsfcgal2 libmariadb3 libmuparser2v5 \
         opentelemetry-cpp \
         libnss-wrapper \
         openssh-client \
@@ -162,19 +192,15 @@ RUN apt-get -y update && \
     apt-get -y autoremove && \
     rm -rf /var/lib/apt/lists/*
 
-RUN dpkg -i /tmp/apache-arrow.deb && \
-    apt-get -y update && \
+# Apache Arrow
+COPY --from=build /usr/share/keyrings/apache-arrow.gpg /usr/share/keyrings/apache-arrow.gpg
+COPY --from=build /etc/apt/sources.list.d/apache-arrow.sources /etc/apt/sources.list.d/apache-arrow.sources
+
+RUN apt-get -y update && \
     apt-get install -y --no-install-recommends --no-install-suggests \
         libarrow-compute2600 libarrow-dataset2600 libparquet2600 && \
     apt-get -y autoremove && \
     rm -rf /var/lib/apt/lists/*    
-
-# HOME: a UID without passwd entry gets HOME=/ by default
-ENV AIRFLOW_INSTALL_DIR=${AIRFLOW_INSTALL_DIR} \
-    AIRFLOW_HOME=${AIRFLOW_INSTALL_DIR}/home \
-    AIRFLOW_RUN_DIR=${AIRFLOW_RUN_DIR} \
-    HOME=${AIRFLOW_INSTALL_DIR}/home \
-    PATH=/usr/gdal/bin:$PATH
 
 # GDAL
 COPY --from=build /usr/gdal /usr/gdal
@@ -189,6 +215,13 @@ COPY --from=build /etc/ld.so.conf.d/oracle.conf /etc/ld.so.conf.d/oracle.conf
 # Entrypoint
 COPY scripts/docker-entrypoint.sh scripts/docker-healthcheck.sh scripts/airflow-init.sh /
 
+# HOME: a UID without passwd entry gets HOME=/ by default
+ENV HOME=${AIRFLOW_INSTALL_DIR}/home \
+    PATH=/usr/gdal/bin:$PATH \
+    AIRFLOW_INSTALL_DIR=${AIRFLOW_INSTALL_DIR} \
+    AIRFLOW_HOME=${AIRFLOW_INSTALL_DIR}/home
+
+# Last Configs
 WORKDIR ${AIRFLOW_INSTALL_DIR}
 
 RUN set -o pipefail && \
@@ -205,12 +238,12 @@ RUN set -o pipefail && \
     printf "\n# Airflow \nsource /airflow-init.sh\n" >> /etc/bash.bashrc && \
     # create writable dirs for any UID with GID 0 (OpenShift)
     mkdir -p ${AIRFLOW_HOME} ${AIRFLOW_RUN_DIR} && \
-    chgrp -R 0 ${AIRFLOW_HOME} ${AIRFLOW_RUN_DIR} && \
+    chown -R ${AIRFLOW_USER}:0 ${AIRFLOW_HOME} ${AIRFLOW_RUN_DIR} && \
     chmod -R g=u ${AIRFLOW_HOME} ${AIRFLOW_RUN_DIR}
 
 WORKDIR ${AIRFLOW_HOME}
 
-USER 50000:0
+USER ${AIRFLOW_USER}
 
 ENTRYPOINT [ "tini", "--", "/docker-entrypoint.sh" ]
 
