@@ -68,6 +68,7 @@ RUN wget -O apache-arrow.deb \
         libgeotiff-dev \
         libjson-c-dev \
         libkml-dev \
+        libmariadb-dev \
         libmuparser-dev \
         libparquet-dev \ 
         libproj-dev \
@@ -109,7 +110,7 @@ ENV GDAL_DATA=/usr/local/share/gdal \
     
 
 # Install airflow
-ARG AIRFLOW_PLUGINS="celery,elasticsearch,oracle,opensearch,postgres,mongo,mssql,samba,ssh,crypto"
+ARG AIRFLOW_PLUGINS="celery,elasticsearch,oracle,opensearch,postgres,mongo,mssql,mariadb,samba,ssh,crypto"
 
 WORKDIR ${AIRFLOW_INSTALL_DIR}
 
