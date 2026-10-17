@@ -115,8 +115,7 @@ case "$1" in
         ;;
 
     *)
-        CMD="$@"
-        echo "Executing: $CMD"
-        exec "$CMD"
+        echo "Executing: $*"
+        exec "$@"
         ;;
 esac

@@ -219,7 +219,8 @@ COPY scripts/docker-entrypoint.sh scripts/docker-healthcheck.sh scripts/airflow-
 ENV HOME=${AIRFLOW_INSTALL_DIR}/home \
     PATH=/usr/gdal/bin:$PATH \
     AIRFLOW_INSTALL_DIR=${AIRFLOW_INSTALL_DIR} \
-    AIRFLOW_HOME=${AIRFLOW_INSTALL_DIR}/home
+    AIRFLOW_HOME=${AIRFLOW_INSTALL_DIR}/home \
+    AIRFLOW_RUN_DIR=${AIRFLOW_RUN_DIR}
 
 # Last Configs
 WORKDIR ${AIRFLOW_INSTALL_DIR}
